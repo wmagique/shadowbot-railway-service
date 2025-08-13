@@ -12,11 +12,20 @@ app.use(express.json());
 
 // Configuration de la base de données
 const dbConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'u171822244_shadowbot',
-    password: process.env.DB_PASSWORD || 'Ev04Hg08',
-    database: process.env.DB_NAME || 'u171822244_shadowbot'
+    host: process.env.MYSQLHOST || process.env.DB_HOST || 'mysql.railway.internal',
+    user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
+    password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || 'GImTHJeRg1pSzdHVvgSgxDliQtndjEPd',
+    database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'railway',
+    port: process.env.MYSQLPORT || process.env.DB_PORT || 3306
 };
+
+// Debug: Afficher la configuration (sans le mot de passe)
+console.log('🔧 Configuration DB:', {
+    host: dbConfig.host,
+    user: dbConfig.user,
+    database: dbConfig.database,
+    port: dbConfig.port
+});
 
 // Map pour stocker les bots actifs
 const activeBots = new Map();
@@ -24,10 +33,53 @@ const activeBots = new Map();
 // Connexion à la base de données
 async function getDatabaseConnection() {
     try {
-        return await mysql.createConnection(dbConfig);
+        const connection = await mysql.createConnection(dbConfig);
+        
+        // Créer les tables si elles n'existent pas
+        await createTables(connection);
+        
+        return connection;
     } catch (error) {
         console.error('❌ Erreur de connexion à la base de données:', error);
         throw error;
+    }
+}
+
+// Créer les tables nécessaires
+async function createTables(connection) {
+    try {
+        // Table des licences
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS shadowbot_licenses (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                discord_id VARCHAR(20) NOT NULL,
+                license_type VARCHAR(50) NOT NULL,
+                status ENUM('active', 'expired', 'cancelled') DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                duration VARCHAR(20) NOT NULL,
+                UNIQUE KEY unique_user_license (discord_id, license_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        
+        // Table des tokens de bots
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS user_bot_tokens (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                discord_id VARCHAR(20) NOT NULL,
+                license_type VARCHAR(50) NOT NULL,
+                bot_token TEXT NOT NULL,
+                status ENUM('active', 'inactive') DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_user_bot (discord_id, license_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        
+        console.log('✅ Tables créées/vérifiées avec succès');
+        
+    } catch (error) {
+        console.error('❌ Erreur lors de la création des tables:', error);
     }
 }
 
